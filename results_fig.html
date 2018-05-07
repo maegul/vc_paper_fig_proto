@@ -86,7 +86,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
   		.range([border_width.connection*1.5, ret_sq_size])
 
 	var input_perc_rad = d3.scalePow()
-		.exponent(1)
+		.exponent(0.5)
 		.range([border_width.connection, (ret_sq_size/2) - (border_width.connection / 2 )])
 
 	var ori_pref = d3.scaleSequential(
@@ -189,7 +189,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 
 			if (weight){
-			ret_canvas.append('circle').classed('ret_cell', true)
+			ret_canvas.append('ellipse').classed('ret_cell', true)
 				.attr('cx', function(){
 					var sq_coord = lin_to_sq_coord(idx, ret_size);
 					var norm_sq_coord = sq_coord[1] - ret_palette.min_coord[1];
@@ -206,10 +206,13 @@ Promise.all(data_files.map(f=>d3.json(f)))
 					// var margin_trans = margin*trans;
 					return center_trans + ret_top_left_margin 
 				})
-				.attr('r', function(){
+				.attr('rx', function(){
 				
-						return input_perc_rad(weight[wt_idx])
+					return input_perc_rad(weight[wt_idx])
 					
+				})
+				.attr('ry', function(){
+					return input_perc_rad(weight[wt_idx]) * 0.5
 				})
 				.attr('stroke', function(){
 					if (weight && weight[wt_idx]>0) {
@@ -226,6 +229,12 @@ Promise.all(data_files.map(f=>d3.json(f)))
 					}
 				})
 				.attr('fill', 'None')
+				.attr('transform', function(){
+					var cy = d3.select(this).attr('cy')
+					var cx = d3.select(this).attr('cx')
+
+					return `rotate(${-1*(get_ret_bias_from_wt(weight))}, ${cx}, ${cy})`
+				})
 			}
 
 		})
