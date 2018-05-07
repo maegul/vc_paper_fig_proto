@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+	<script src="https://d3js.org/d3.v5.min.js"></script>
+	<script type="text/javascript" src='https://cdn.jsdelivr.net/npm/lodash@4.17.10/lodash.min.js'></script>
+
+
+	<style type="text/css">
+		
+		.retina_svg {
+			margin-right: 20px
+		}
+
+	</style>
+
+</head>
+<body>
+
+	<div id='canvas' style='
+	display: flex;
+	flex-direction: row;
+	width: 200vw;
+	justify-content: flex-start;
+
+	'>
+		
+		<svg id='before' class='retina_svg'></svg>
+		<svg id='after' class='retina_svg'></svg>
+
+		
+	</div>
+
+
+
+<script type="text/javascript">
+
+
+// Loading Data
+var data_files = [
+	'ori_tun_resp.json', 
+	'sf_tun_resp.json', 
+	'./percentage_weights.json',
+	'./pretinal_pref_orientations.json'
+]
+
+
+// Parameters
+
+	// Size of retinal square
+	var ret_sq_size = 18;
+	var margin = 1.2 // ie, 1.2 ~> 20% margin, excluding border_widths
+	var border_width = {
+		connection: 3,
+		no_connection: 1
+	}
+	var cnr_rad = 2;
+	var ret_top_left_margin = border_width.connection * 2
+
+	var border_lightness = 0.7;
+	var border_col_no_connection = d3.gray(80)
+
+Promise.all(data_files.map(f=>d3.json(f)))
+.then(function(values) {
+
+	var v1_cell_num = 12;
+
+	var ori_tun_resp = values[0],
+	sf_tun_resp = values[1],
+	pct_wts = values[2].perc_wt,
+	ret_bias = _.flatten(values[3].retina_pref_ori)
+
+
+	// Scales
+	var perc_wt_range = d3.extent(
+			pct_wts[v1_cell_num]
+				.map(inpt=>inpt[0]) // Taking before plast weight
+			);
+
+	// Simple scale
+	// var input_perc = d3.scaleSequential(d3.interpolateGreys)
+	// 				  .domain(perc_wt_range);
+
+	// Custom for changing compression
+	var input_perc = d3.scalePow()
+					  .exponent(1) //exponent of scale
+					  .domain(perc_wt_range)
+					  .range(['rgb(246,246,246)', 'rgb(0,0,0)'])
+					  // .range(['rgb(255,255,255)', 'rgb(0,0,0)'])
+					  .interpolate(d3.interpolateRgb)
+
+
+	var ori_pref = d3.scaleSequential(
+	  function(v){
+	    return d3.hsl(v * 360, 1, border_lightness) +'';
+	  }
+	  // d3.interpolateRainbow
+	)
+	  .domain([0, 180])	
+
+
+
+
+
+	console.log(ori_tun_resp, sf_tun_resp, pct_wts, ret_bias)
+
+
+	// DataVIz
+
+
+	ret_size = Math.pow(ret_bias.length, 0.5) // presume square
+	console.log('ret size', ret_size)
+
+	// Setting up Retina Palette
+
+	var ret_palette = ret_range(pct_wts[v1_cell_num]);
+	console.log('ret pallete', ret_palette)
+
+	var before_ret = d3.select('#before');
+	var after_ret = d3.select('#after')
+
+	// Adjust svg size to have whole retina
+	var ret_grid_size = (ret_palette.range_size+1) * ret_sq_size*margin + ret_top_left_margin
+
+	before_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
+	after_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
+
+	make_retina(stage='before', before_ret)
+	make_retina(stage='after', after_ret)
+
+
+	function make_retina(stage='before', ret_canvas){
+
+		// Get appropriate weight value from percentage weights
+		// zero -> before plasticity
+		// one -> after
+		if (stage=='before'){
+			var wt_idx = 0
+		} else if (stage == 'after') {
+			var wt_idx = 1
+		}
+
+		ret_palette.ret_idxs.forEach(function(idx){
+			var weight = _.find(pct_wts[v1_cell_num], function(a){
+				return a[2] == idx;
+			});
+
+			ret_canvas.append('rect').classed('ret_cell', true)
+				.attr('x', function(){
+					var sq_coord = lin_to_sq_coord(idx, ret_size);
+					var norm_sq_coord = sq_coord[1] - ret_palette.min_coord[1];
+					var trans = norm_sq_coord * ret_sq_size;
+					return margin*trans + ret_top_left_margin
+				})
+				.attr('y', function(){
+					var sq_coord = lin_to_sq_coord(idx, ret_size);
+					var norm_sq_coord = sq_coord[0] - ret_palette.min_coord[0];
+					var trans = norm_sq_coord * ret_sq_size;
+					return margin*trans + ret_top_left_margin
+				})
+				.attr('stroke', function(){
+
+					if (weight && weight[wt_idx]>0) {return ori_pref(get_ret_bias_from_wt(weight))} 
+						else {return border_col_no_connection}
+					
+				})
+				.attr('stroke-width', function(){
+
+
+					if (weight && weight[wt_idx]>0) {return border_width.connection}
+						else {return border_width.no_connection}
+				})
+				.attr('fill', function(){
+
+					if (weight && weight[wt_idx]>0) {return input_perc(weight[0])} else {return 'None'}
+				})
+				.attr('width', function(){
+
+					if (weight && weight[wt_idx]>0) {
+						return ret_sq_size
+					}
+					else { return ret_sq_size*0.6}
+
+					return ret_sq_size
+
+				})
+				.attr('height', function(){
+					if (weight && weight[wt_idx]>0) {
+						return ret_sq_size
+					}
+					else { return ret_sq_size*0.6}
+
+					return ret_sq_size
+
+				})
+				.attr('rx', cnr_rad)
+				.attr('ry', cnr_rad)
+
+		})
+	}
+
+
+	function get_ret_bias_from_wt(weight){
+
+		var weight_idx = weight[2];// index from matlab land
+		var ori_bias_idx = weight_idx - 1 // adapted to zero indexing for matlab
+
+		return ret_bias[ori_bias_idx];
+	}
+
+
+});
+
+
+
+
+
+
+// Utilities Functions
+			  
+
+
+function ret_range(perc_wts){
+	// Requres single cell data from perc wts
+
+	// coords for each input
+	var ret_coords = perc_wts.map(function(inpt){
+
+		var coords = lin_to_sq_coord(inpt[2], ret_size);
+		return {row: coords[0], col: coords[1]}
+	})
+
+
+	var row_extent = d3.extent(ret_coords.map(c=>c.row));
+	var col_extent = d3.extent(ret_coords.map(c=>c.col));
+
+	var min_coord = [row_extent[0], col_extent[0]];
+
+	var range_size = 0;
+
+	if ((row_extent[1]-row_extent[0]) > (col_extent[1]-col_extent[0])){
+		range_size = row_extent[1]-row_extent[0]
+	} else {
+		range_size = col_extent[1]-col_extent[0]
+	}
+
+	// Building all retinal indices in relevant range (range_size)
+	// Iterate through each row and column combination and push lin coord
+	var ret_idxs = [];
+
+	// If range is such that in the dimension for which there is less of a range, adding the range to the min would overflow (ie go over the size of the ret, then limit the visualised range to the limit of the retina and forego being square)
+	var row_viz_min = row_extent[0];
+	var row_viz_max = (row_extent[0]+range_size) > ret_size ? ret_size : row_extent[0]+range_size+1;
+	var col_viz_min = col_extent[0];
+	var col_viz_max = (col_extent[0]+range_size) > ret_size ? ret_size : col_extent[0]+range_size+1;
+
+
+	d3.range(row_viz_min, row_viz_max).forEach(function(r){
+		d3.range(col_viz_min, col_viz_max).forEach(function(c){
+			ret_idxs.push(squ_to_lin_coord(r, c, ret_size))
+		})
+	})
+
+
+	return {
+		row_extent: row_extent,
+		col_extent: col_extent,
+		range_size: range_size, 
+		min_coord: min_coord,
+		ret_idxs: ret_idxs
+	};
+}
+
+function lin_to_sq_coord(N, sz){
+
+// %%linear to square coordinate transformation.  Linearised by columns
+// N: cell or idx number
+// sz: size along one dimension (presumes square shape)
+
+	var col = Math.ceil(N / sz); // Linearised by column
+
+	var row = ((N-1)%sz) + 1;
+
+	return [row, col]
+
+}
+
+function squ_to_lin_coord(r, c, sz){
+	// linearised by columns
+	return (sz*(c-1)) + r;
+}
+
+
+
+
+
+</script>
+
+</body>
+</html>
