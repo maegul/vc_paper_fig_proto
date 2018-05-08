@@ -76,7 +76,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 	// No domains, as added when data is available in functions below
 	var input_perc = d3.scalePow()
-		.exponent(4) //exponent of scale
+		.exponent(1) //exponent of scale
 		.range(['rgb(246,246,246)', 'rgb(0,0,0)'])
 		.interpolate(d3.interpolateRgb)
 
@@ -85,6 +85,9 @@ Promise.all(data_files.map(f=>d3.json(f)))
   		.exponent(0.5) // Sq Root as controlling size (ie x^2), so compensate with root
   		.range([border_width.connection*1.5, ret_sq_size])
 
+	var input_perc_rad = d3.scalePow()
+		.exponent(0.5)
+		.range([border_width.connection, (ret_sq_size/2) - (border_width.connection / 2 )])
 
 	var ori_pref = d3.scaleSequential(
 	  function(v){
@@ -145,77 +148,98 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 		input_perc.domain(perc_wt_range)
 		input_perc_size.domain(perc_wt_range)
+		input_perc_rad.domain(perc_wt_range)
 
 		ret_palette.ret_idxs.forEach(function(idx){
 			var weight = _.find(pct_wts[v1_cell_num], function(a){
 				return a[2] == idx;
 			});
 
-			ret_canvas.append('rect').classed('ret_cell', true)
-				.attr('width', function(){
-
-					if (weight && weight[wt_idx]>0) {
-						// return ret_sq_size
-						return input_perc_size(weight[wt_idx])
-					}
-					else { 
-						return input_perc_size.range()[0] //Ie, minimum size
-					}
-
-
-				})
-				.attr('height', function(){
-					if (weight && weight[wt_idx]>0) {
-						// return ret_sq_size
-						return input_perc_size(weight[wt_idx])
-					}
-					else { 
-						return input_perc_size.range()[0] //Ie, minimum size
-					}
-
-
-				})
+			ret_canvas.append('rect').classed('ret_grid', true)
+				.attr('width', ret_sq_size)
+				.attr('height', ret_sq_size)
 				.attr('x', function(){
-					var cell_sz = d3.select(this).attr('width')
 
 					var sq_coord = lin_to_sq_coord(idx, ret_size);
 					var norm_sq_coord = sq_coord[1] - ret_palette.min_coord[1];
 					var trans = norm_sq_coord * ret_sq_size;
-					var margin_trans = margin*trans;
-					var size_adj_trans = margin_trans + (ret_sq_size - cell_sz/2)
-					return size_adj_trans + ret_top_left_margin
+					// var margin_trans = margin*trans;
+					return trans + ret_top_left_margin
 				})
 				.attr('y', function(){
-					var cell_sz = d3.select(this).attr('width')
 
 					var sq_coord = lin_to_sq_coord(idx, ret_size);
 					var norm_sq_coord = sq_coord[0] - ret_palette.min_coord[0];
 					var trans = norm_sq_coord * ret_sq_size;
-					var margin_trans = margin*trans;
-					var size_adj_trans = margin_trans + (ret_sq_size - cell_sz/2)
-					return size_adj_trans + ret_top_left_margin
+					// var margin_trans = margin*trans;
+					return trans + ret_top_left_margin
 				})
-				.attr('stroke', function(){
-
-					if (weight && weight[wt_idx]>0) {return ori_pref(get_ret_bias_from_wt(weight))} 
-						else {return border_col_no_connection}
-					
-				})
-				.attr('stroke-width', function(){
-
-
-					if (weight && weight[wt_idx]>0) {return border_width.connection}
-						else {return border_width.no_connection}
-				})
+				.attr('stroke', border_col_no_connection)
+				.attr('stroke-width', border_width.no_connection)
 				.attr('fill', function(){
 
-					if (weight && weight[wt_idx]>0) {return input_perc(weight[wt_idx])} 
-						else {return 'None'}
+					if (weight && weight[wt_idx]>0) {
+						return input_perc(weight[wt_idx])
+					} else {
+						return 'None'
+					}
 				})
 				// .attr('rx', cnr_rad)
 				// .attr('ry', cnr_rad)
 
+
+			if (weight){
+			ret_canvas.append('ellipse').classed('ret_cell', true)
+				.attr('cx', function(){
+					var sq_coord = lin_to_sq_coord(idx, ret_size);
+					var norm_sq_coord = sq_coord[1] - ret_palette.min_coord[1];
+					var trans = norm_sq_coord * ret_sq_size;
+					var center_trans = trans + (ret_sq_size/2)
+					// var margin_trans = margin*trans;
+					return center_trans + ret_top_left_margin 
+				})
+				.attr('cy', function(){
+					var sq_coord = lin_to_sq_coord(idx, ret_size);
+					var norm_sq_coord = sq_coord[0] - ret_palette.min_coord[0];
+					var trans = norm_sq_coord * ret_sq_size;
+					var center_trans = trans + (ret_sq_size/2)
+					// var margin_trans = margin*trans;
+					return center_trans + ret_top_left_margin 
+				})
+				.attr('rx', function(){
+				
+					return input_perc_rad(weight[wt_idx])
+					
+				})
+				.attr('ry', function(){
+					return input_perc_rad(weight[wt_idx]) * 0.5
+				})
+				.attr('stroke', function(){
+					if (weight && weight[wt_idx]>0) {
+						return ori_pref(get_ret_bias_from_wt(weight))
+					} else {
+						return border_col_no_connection
+					}
+				})
+				.attr('stroke-width', function(){
+					if (weight && weight[wt_idx]>0) {
+						return border_width.connection
+					} else {
+						return border_width.no_connection
+					}
+				})
+				.attr('fill', 'None')
+				.attr('transform', function(){
+					var cy = d3.select(this).attr('cy')
+					var cx = d3.select(this).attr('cx')
+
+					return `rotate(${-1*(get_ret_bias_from_wt(weight))}, ${cx}, ${cy})`
+				})
+			}
+
 		})
+
+
 	}
 
 
