@@ -50,7 +50,7 @@ var data_files = [
 	var ret_sq_size = 18;
 	var margin = 1.2 // ie, 1.2 ~> 20% margin, excluding border_widths
 	var border_width = {
-		connection: 3,
+		connection: 2,
 		no_connection: 1
 	}
 	var cnr_rad = 2;
@@ -118,8 +118,9 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	var before_ret = d3.select('#before');
 	var after_ret = d3.select('#after')
 
+
 	// Adjust svg size to have whole retina
-	var ret_grid_size = (ret_palette.range_size+1) * ret_sq_size*margin + ret_top_left_margin
+	var ret_grid_size = ((ret_palette.range_size+1) * ret_sq_size) + ret_top_left_margin + border_width.no_connection
 
 	before_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
 	after_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
@@ -228,7 +229,13 @@ Promise.all(data_files.map(f=>d3.json(f)))
 						return border_width.no_connection
 					}
 				})
-				.attr('fill', 'None')
+				.attr('fill', function(){
+					if (weight && weight[wt_idx]>0) {
+						return ori_pref(get_ret_bias_from_wt(weight))
+					} else {
+						return 'None'
+					}
+				})
 				.attr('transform', function(){
 					var cy = d3.select(this).attr('cy')
 					var cx = d3.select(this).attr('cx')
@@ -252,6 +259,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	}
 
 
+// End Data Load Promise
 });
 
 
