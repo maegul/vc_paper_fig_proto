@@ -8,7 +8,7 @@
 
 	<style type="text/css">
 		
-		.retina_svg {
+		.retina_svg#before {
 			margin-right: 20px
 		}
 
@@ -23,9 +23,11 @@
 	width: 200vw;
 	justify-content: flex-start;"
 	>
-		
+		<svg id='before_legend'></svg>
 		<svg id='before' class='retina_svg'></svg>
 		<svg id='after' class='retina_svg'></svg>
+		<svg id='after_legend'></svg>
+		<svg id='ori_legend'></svg>
 
 		
 	</div>
@@ -48,21 +50,30 @@ var data_files = [
 
 	// Size of retinal square
 	var ret_sq_size = 18;
+
+	var ellipse_alpha = 0.4 // ratio of major and minor radii of ellipses
+	var cnr_rad = 2;
+
 	var margin = 1.2 // ie, 1.2 ~> 20% margin, excluding border_widths
+	
 	var border_width = {
 		connection: 2,
 		no_connection: 1
 	}
-	var cnr_rad = 2;
-	var ret_top_left_margin = border_width.connection * 2
+	var border_col_no_connection = d3.gray(80)
+
+	var grid_width = 1;
+	var grid_color = d3.gray(80);
+	
+	var ret_top_left_margin = grid_width * 3
+	var ret_bot_right_margin = ret_top_left_margin;
 
 	var border_lightness = 0.7;
-	var border_col_no_connection = d3.gray(80)
 
 Promise.all(data_files.map(f=>d3.json(f)))
 .then(function(values) {
 
-	var v1_cell_num = 12;
+	var v1_cell_num = 11;
 
 	var ori_tun_resp = values[0],
 	sf_tun_resp = values[1],
@@ -87,6 +98,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 	var input_perc_rad = d3.scalePow()
 		.exponent(0.5)
+		// min-> border_width (so full border always seen); max-> bounds of square
 		.range([border_width.connection, (ret_sq_size/2) - (border_width.connection / 2 )])
 
 	var ori_pref = d3.scaleSequential(
@@ -116,41 +128,42 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	console.log('ret pallete', ret_palette)
 
 	var before_ret = d3.select('#before');
-	var after_ret = d3.select('#after')
+	var after_ret = d3.select('#after');
+
+	var before_leg = d3.select('#before_legend')
+	var after_leg = d3.select('#after_legend')
+	var ori_leg = d3.select('#ori_legend');
 
 
 	// Adjust svg size to have whole retina
-	var ret_grid_size = ((ret_palette.range_size+1) * ret_sq_size) + ret_top_left_margin + border_width.no_connection
+	var ret_grid_size = ((ret_palette.range_size+1) * ret_sq_size) 
+						+ ret_top_left_margin 
+						+ ret_bot_right_margin
+						+ (border_width.no_connection * 1);
 
 	before_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
 	after_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
 
-	make_retina(stage='before', before_ret)
-	make_retina(stage='after', after_ret)
 
+	// Make DataViz
+
+	make_retina(stage='before', before_ret)
+	make_wt_legend(stage='before', before_leg)
+	make_retina(stage='after', after_ret)
+	make_wt_legend(stage='after', after_leg)
+	make_ori_legend(ori_leg)
+
+
+// DataViz Functions
 
 	function make_retina(stage='before', ret_canvas){
 
-		// Get appropriate weight value from percentage weights
-		// zero -> before plasticity
-		// one -> after
-		if (stage=='before'){
-			var wt_idx = 0
-		} else if (stage == 'after') {
-			var wt_idx = 1
-		}
 
+		var wt_idx = set_wt_idx(stage);
 
-		// Range of input percentages for current v1 cell
-		var perc_wt_range = d3.extent(
-				pct_wts[v1_cell_num]
-					.map(inpt=>inpt[wt_idx]) // Taking before plast weight
-				);
+		norm_input_scale(stage);
 
-		input_perc.domain(perc_wt_range)
-		input_perc_size.domain(perc_wt_range)
-		input_perc_rad.domain(perc_wt_range)
-
+		// Grid Squares
 		ret_palette.ret_idxs.forEach(function(idx){
 			var weight = _.find(pct_wts[v1_cell_num], function(a){
 				return a[2] == idx;
@@ -175,12 +188,13 @@ Promise.all(data_files.map(f=>d3.json(f)))
 					// var margin_trans = margin*trans;
 					return trans + ret_top_left_margin
 				})
-				.attr('stroke', border_col_no_connection)
-				.attr('stroke-width', border_width.no_connection)
+				.attr('stroke', grid_color)
+				.attr('stroke-width', grid_width)
 				.attr('fill', function(){
 
 					if (weight && weight[wt_idx]>0) {
 						return input_perc(weight[wt_idx])
+						// return 'None'
 					} else {
 						return 'None'
 					}
@@ -188,7 +202,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 				// .attr('rx', cnr_rad)
 				// .attr('ry', cnr_rad)
 
-
+			// Ellipses
 			if (weight){
 			ret_canvas.append('ellipse').classed('ret_cell', true)
 				.attr('cx', function(){
@@ -213,7 +227,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 					
 				})
 				.attr('ry', function(){
-					return input_perc_rad(weight[wt_idx]) * 0.5
+					return input_perc_rad(weight[wt_idx]) * ellipse_alpha
 				})
 				.attr('stroke', function(){
 					if (weight && weight[wt_idx]>0) {
@@ -249,6 +263,201 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 	}
 
+	function make_ori_legend(canvas){
+
+		var uniq_oris = _.chain(ret_bias)
+							.uniq()
+							.sortBy()
+							.value()
+
+		var n_steps = uniq_oris.length;
+
+
+
+		var leg_height = ret_grid_size - ret_top_left_margin;
+
+		var ell_sz = (leg_height / n_steps)
+						- border_width.connection // No border overflow
+		var ell_loc = ell_sz + border_width.connection
+
+		var leg_width = ell_sz * 2;
+		var canvas_width = leg_width*3;
+
+		canvas.attr('height', ret_grid_size+ret_top_left_margin)//Adding margin here so that the axis tick for min value is visible (it appears to overflow as the tick marks the value at it's top edge, not middle)
+			.attr('width', canvas_width)
+
+		uniq_oris.forEach(function(ori, i){
+			canvas.append('ellipse')
+				.attr('cx', function(){
+					return ell_sz;
+				})
+				.attr('cy', function(){
+
+					return (i+0.5) * (ell_loc) //sz is diam, to center, move by radius
+
+				})
+				.attr('rx', function(){
+				
+					return ell_sz * 0.5 // radius is half diam
+					
+				})
+				.attr('ry', function(){
+					return (ell_sz * 0.5) * ellipse_alpha
+				})
+				.attr('stroke', function(){
+						return ori_pref(ori)
+				})
+				.attr('stroke-width', function(){
+						return border_width.connection
+				})
+				.attr('fill', function(){
+						return ori_pref(ori)
+				})
+				.attr('transform', function(){
+					var cy = d3.select(this).attr('cy')
+					var cx = d3.select(this).attr('cx')
+
+					return `rotate(${-1*(ori)}, ${cx}, ${cy})`
+				})
+		})
+	}
+
+	function make_wt_legend(stage='before', canvas){
+
+		var n_steps = 20;
+		var leg_width = ret_sq_size*0.6;
+
+		var wt_idx = set_wt_idx(stage);
+		var perc_wt_range = norm_input_scale(stage, wt_idx);
+
+		var canvas_width = ret_sq_size*3;
+		var leg_height = ret_grid_size - ret_top_left_margin
+
+		var scale_copy = input_perc.copy()
+							.range([leg_height+ret_top_left_margin,
+								ret_top_left_margin])
+							.interpolate(d3.interpolate) // Have to revert the color interpolater used for the color scale
+
+		
+		if (stage=='before') {
+			var leg_trans_x = canvas_width - leg_width
+			var axis_trans_x = leg_trans_x
+
+			var axis = d3.axisLeft(scale_copy)
+							.tickFormat(d3.format('.0%'))
+							.ticks(5)
+			
+		} 
+		else if (stage=='after') {
+			var leg_trans_x = 0;
+			var axis_trans_x = leg_width;
+
+			var axis = d3.axisRight(scale_copy)
+							.tickFormat(d3.format('.0%'))
+							.ticks(5)
+		}
+
+		canvas.attr('height', ret_grid_size+ret_top_left_margin)//Adding margin here so that the axis tick for min value is visible (it appears to overflow as the tick marks the value at it's top edge, not middle)
+			.attr('width', canvas_width)
+
+
+
+		// Setting up SVG Gradient
+		var defs = canvas.append('defs');
+		var linearGradient = defs.append('linearGradient')
+			.attr('id', 'before_input_leg_grad')
+
+		//Vertical gradient
+		linearGradient
+		    .attr("x1", "0%")
+		    .attr("y1", "100%")
+		    .attr("x2", "0%")
+		    .attr("y2", "0%");
+
+		var grad_data = d3.range(
+						perc_wt_range[0],
+						perc_wt_range[1], 
+						(perc_wt_range[1]-perc_wt_range[0]) / n_steps
+					)
+					.map(function(v, i){
+						return {
+							offset: d3.format('0.1%')( i /n_steps) + '',
+							color: input_perc(v)
+						}
+					})
+
+		linearGradient.selectAll('stop')
+			.data(grad_data)
+			.enter().append('stop')
+			.attr('offset', d=>d.offset)
+			.attr('stop-color', d=>d.color)
+
+		// Adding actual SVG elements
+
+		canvas.append('rect')
+			.attr('height', leg_height)
+			.attr('width', leg_width)
+			.attr('x', leg_trans_x)
+			.attr('y', ret_top_left_margin)
+			.attr('fill', 'url(#before_input_leg_grad)')
+
+
+
+
+
+		canvas.append('g')
+			.attr('class', 'axis leg_wt')
+			.attr('transform', `translate(${axis_trans_x}, 0)`)
+			.attr('height', leg_height)
+			.call(axis)
+	}
+
+
+	function norm_input_scale(stage, wt_idx){
+		// Find range of input wts and set scale domains accordingly
+
+		var wt_idx = set_wt_idx(stage);
+
+		// Range of input percentages for current v1 cell
+
+		if (stage=='before') {
+
+			var perc_wt_range = d3.extent(
+					pct_wts[v1_cell_num]
+						.map(inpt=>inpt[wt_idx]) 
+					);
+		} 
+		// For the scaling, after plast, zero means dead, so minimum above zero is actual minimum
+		else if (stage=='after'){
+			var perc_wt_range = d3.extent(
+					pct_wts[v1_cell_num]
+						.filter(inpt=>inpt[wt_idx]>0)
+						.map(inpt=>inpt[wt_idx]) 
+					);
+			
+		}
+
+		input_perc.domain(perc_wt_range)
+		input_perc_size.domain(perc_wt_range)
+		input_perc_rad.domain(perc_wt_range)
+
+		return perc_wt_range;
+	}
+
+	function set_wt_idx(stage){
+		// Get appropriate weight value from percentage weights
+		// zero -> before plasticity
+		// one -> after
+
+		if (stage=='before'){
+			var wt_idx = 0
+		} else if (stage == 'after') {
+			var wt_idx = 1
+		}
+
+		return wt_idx
+
+	}
 
 	function get_ret_bias_from_wt(weight){
 
