@@ -110,7 +110,7 @@ var data_files = [
 Promise.all(data_files.map(f=>d3.json(f)))
 .then(function(values) {
 
-	var v1_cell_num = 13;
+	var v1_cell_num = 12;
 
 	var ori_tun_resp = values[0],
 	sf_tun_resp = values[1],
@@ -122,8 +122,6 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 
 	// Scales
-
-
 
 	// No domains, as added when data is available in functions below
 	var input_perc = d3.scalePow()
@@ -163,12 +161,17 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	// DataVIz
 
 
-	ret_size = Math.pow(ret_bias.length, 0.5) // presume square
-	console.log('ret size', ret_size)
+	var ret_size = Math.pow(ret_bias.length, 0.5) // presume square
+	console.log('ret size', ret_size);
+
+	var v1_size = pct_wts.length;
 
 	// Setting up Retina Palette
 
-	var ret_palette = ret_range(pct_wts[v1_cell_num]);
+	var all_ret_palette = retina_data(v1_size);
+	console.log('all ret data', all_ret_palette);
+
+	var ret_palette = all_ret_palette[v1_cell_num]
 	console.log('ret pallete', ret_palette)
 
 	var before_ret = d3.select('#before');
@@ -216,9 +219,20 @@ Promise.all(data_files.map(f=>d3.json(f)))
 		norm_input_scale(stage);
 
 		// Grid Squares
-		ret_palette.ret_idxs.forEach(function(idx){
+		ret_palette.ret_idxs.forEach(function(idx, i){
+
+
+			if (ret_palette.wrapping.wrapped) {
+				var actual_idx = ret_palette.actual_ret_idxs[i]; // Use same index as given ret_idx
+			}
+			else {
+
+				var actual_idx = idx;
+			}
+
 			var weight = _.find(pct_wts[v1_cell_num], function(a){
-				return a[2] == idx;
+
+					return a[2] == actual_idx // weight data stored by actual index
 			});
 
 			ret_canvas.append('rect').classed('ret_grid', true)
@@ -586,19 +600,30 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	}
 
 
-// End Data Load Promise
-});
-
-
-
 
 
 
 // Utilities Functions
+
+function retina_data(v1_size){
+	// Generate Retina Range Data for every v1 cell
+
+	var data = d3.range(v1_size).map(function(idx) {
+		return ret_range(pct_wts[idx])
+	})
+
+	return data;
+}
 			  
 
 
+
 function ret_range(perc_wts){
+
+	// Generates retinal data for a v1 cell
+	// Mainly for organising the layout of the retina in the visualisation
+	// Also includes calculation of how to unwrap if the retinal sampling wraps around the edges
+
 	// Requres single cell data from perc wts
 
 	// coords for each input
@@ -608,6 +633,17 @@ function ret_range(perc_wts){
 		return {row: coords[0], col: coords[1]}
 	})
 
+
+	// Add wrapping data
+	wrapping = wrapping_calc(ret_coords)
+
+	// If sampling is wrapped, use unwrapped ret_coords so that appearance in the visualisation has no wrapping
+	if (wrapping.wrapped){
+		// For storage
+		var actual_ret_coords = _.cloneDeep(ret_coords)
+		// replace with unwrapped coordinates
+		var ret_coords = ret_coord_unwrap(ret_coords, wrap_kind(wrapping))
+	}
 
 	var row_extent = d3.extent(ret_coords.map(c=>c.row));
 	var col_extent = d3.extent(ret_coords.map(c=>c.col));
@@ -623,21 +659,38 @@ function ret_range(perc_wts){
 	}
 
 	// Building all retinal indices in relevant range (range_size)
-	// Iterate through each row and column combination and push lin coord
-	var ret_idxs = [];
-
 	// If range is such that in the dimension for which there is less of a range, adding the range to the min would overflow (ie go over the size of the ret, then limit the visualised range to the limit of the retina and forego being square)
 	var row_viz_min = row_extent[0];
 	var row_viz_max = (row_extent[0]+range_size) > ret_size ? ret_size : row_extent[0]+range_size+1;
 	var col_viz_min = col_extent[0];
 	var col_viz_max = (col_extent[0]+range_size) > ret_size ? ret_size : col_extent[0]+range_size+1;
 
+	// Make coordinates for cells actually to be visualised
+	var viz_coords = [];
 
 	d3.range(row_viz_min, row_viz_max).forEach(function(r){
 		d3.range(col_viz_min, col_viz_max).forEach(function(c){
-			ret_idxs.push(squ_to_lin_coord(r, c, ret_size))
+
+			viz_coords.push({row:r, col: c})
 		})
 	})
+
+	// unwrap again (presume reversible) to create actual idxs (for when actual idx is necessary to reference other data) and actual viz coords (ie, what coords would be visualised if no unwrappin were done) for reference.
+
+	// As using map ... order is the same in transformed and actual for coords and idxs
+	if (wrapping.wrapped){
+
+		var actual_viz_coords = ret_coord_unwrap(viz_coords, wrap_kind(wrapping));
+		var actual_ret_idxs = actual_viz_coords.map(function(cd){
+			return squ_to_lin_coord(cd.row, cd.col, ret_size)
+		})
+	}
+
+	// Make ret idxs for visualised and actual
+	var ret_idxs = viz_coords.map(function(cd){
+		return squ_to_lin_coord(cd.row, cd.col, ret_size)
+	})
+
 
 
 	return {
@@ -645,9 +698,149 @@ function ret_range(perc_wts){
 		col_extent: col_extent,
 		range_size: range_size, 
 		min_coord: min_coord,
-		ret_idxs: ret_idxs
+		ret_idxs: ret_idxs,
+		ret_coords: ret_coords,
+		wrapping: wrapping,
+		actual_ret_coords: actual_ret_coords,
+		viz_coords: viz_coords,
+		actual_viz_coords: actual_viz_coords,
+		actual_ret_idxs: actual_ret_idxs
 	};
 }
+
+
+function ret_coord_unwrap(ret_coords, wrap_kind){
+
+	// Unwraps retinal coordinates
+	// depending on whether the wrapping is over rows, cols or both,
+	// unwraps by splitting the grid in two or fours and shifting halves or quarters
+	// so that the center of the patch or retina sampled is placed in the center of an actual grid.
+	// Where wrapping over only one dimension, shift only the dimension (halves)
+	// where both dimensions, shift both dimensions (quarters)
+	// Basic rule for shifting is invert the half's or quarter's position relative to the split.  If in the first half, make second half, and vice versa.  If quarter is in first half along rows and second half along cols, make second half along rows and first half along cols
+
+	var split = ret_size / 2
+	// How deal with odd numbers for size?
+	// Split at half+1?
+
+	if (wrap_kind == 'both') {
+		var trans_coords = ret_coords.map(function(cd){
+
+			return {
+				row: trans(cd.row), 
+				col: trans(cd.col)
+			}
+		})
+	}
+	else if (wrap_kind == 'row') {
+		var trans_coords = ret_coords.map(function(cd){
+
+			return {
+				row: trans(cd.row), 
+				col: cd.col
+			}
+		})
+	}
+	else if (wrap_kind == 'col') {
+		var trans_coords = ret_coords.map(function(cd){
+
+			return {
+				row: cd.row, 
+				col: trans(cd.col)
+			}
+		})
+	}
+
+	// Only one trans function as presume square
+	function trans(v){
+		if (v <= split) {
+			return v + split;
+		}
+		else if (v > split) {
+			return v - split;
+		}
+	}
+
+
+	return trans_coords
+
+}
+
+function wrap_kind(wrapping){
+	var col_wrap = wrapping.wrapped_data.col.wrapped
+	var row_wrap = wrapping.wrapped_data.row.wrapped
+
+	if (col_wrap && row_wrap){
+		return 'both'
+	}
+	else if (col_wrap && !row_wrap) {
+		return 'col'
+	}
+	else if (row_wrap && !col_wrap) {
+		return 'row'
+	}
+	else {
+		return null
+	}
+}
+
+function wrapping_calc(ret_coords){
+
+	// Check for wrapping in rows and cols
+	var wrapped_data = {};
+	['row', 'col'].forEach(function(dim) {
+
+		// calculate distances between coordinates of sampled retinal cells
+		// return sorted unique distances
+		var dists = _.chain(ret_coords)
+			.map(c=>c[dim])
+			.sortBy()
+			.map(function(v,i, coll) {
+				if(i==0){
+					return 0 // if first coord, no coord to compare
+				}
+				else {
+					return v - coll[i-1]; // compare with previous coord to calc distance
+				}
+			})
+			.uniq()
+			.sortBy()
+			.value();
+
+		// Using std deviation and median to look for outliers
+		// Logic is that the median is insensitive to outliers, but std dev is; if std dev is substantially larger than median, then indicates outlier.
+		var dists_dev = _.round(d3.deviation(dists), 2);
+		var dists_median = d3.median(dists);
+
+
+		if (dists_dev > (2*dists_median)) {
+			var wrapped = true
+		}
+		else {
+			var wrapped = false
+		}
+
+
+		wrapped_data[dim] =  {
+			wrapped: wrapped,
+			dim: dim,
+			dists: dists,
+			dists_median: dists_median
+		}
+
+	})
+
+	// Sampling is wrapped if wrapping in either row or col
+	var wrapped  = (wrapped_data.col.wrapped || wrapped_data.row.wrapped)
+
+	return {
+		wrapped: wrapped,
+		wrapped_data: wrapped_data
+	}
+}
+
+
+
 
 function lin_to_sq_coord(N, sz){
 
@@ -669,8 +862,10 @@ function squ_to_lin_coord(r, c, sz){
 }
 
 
-
-
+////////////////
+// End Data Load Promise
+////////////////
+});
 
 </script>
 
