@@ -21,23 +21,37 @@
 		  font: 10px sans-serif;
 		}
 
-		.axis line,
-		.axis circle {
+		.r.bound circle {
+			stroke: #777;
+			fill: none;
+		}
+		.axis.a line,
+		.axis.r circle {
 		  fill: none;
-		  stroke: #777;
-		  stroke-dasharray: 1,4;
+		  /*stroke: #777;*/
+		  stroke: #CCC;
+		  stroke-dasharray: 1,1;
 		}
 
-		.axis :last-of-type circle {
+		/* For Weight Input legend*/
+		.axis.leg_wt line {
+			stroke: #AAA;
+		}
+		/*for axis path stem thingy*/
+		.axis.leg_wt path {
+			visibility: hidden;
+		}
+
+/*		.axis :last-of-type circle {
 		  stroke: #333;
 		  stroke-dasharray: none;
-		}
+		}*/
 
-		.line {
+/*		.line {
 		  fill: none;
 		  stroke: red;
 		  stroke-width: 1.5px;
-		}
+		}*/
 
 	</style>
 
@@ -79,7 +93,8 @@ var data_files = [
 	'ori_tun_resp.json', 
 	'sf_tun_resp.json', 
 	'./percentage_weights.json',
-	'./pretinal_pref_orientations.json'
+	'./pretinal_pref_orientations.json',
+	'./ori_tun_pref_sf.json'
 ]
 
 
@@ -110,15 +125,16 @@ var data_files = [
 Promise.all(data_files.map(f=>d3.json(f)))
 .then(function(values) {
 
-	var v1_cell_num = 12;
+	var v1_cell_num = 6;
 
-	var ori_tun_resp = values[0],
+	var ori_tun_resp = values[0].ori_tun,
 	sf_tun_resp = values[1],
 	pct_wts = values[2].perc_wt,
-	ret_bias = _.flatten(values[3].retina_pref_ori)
+	ret_bias = _.flatten(values[3].retina_pref_ori),
+	pref_ori_data = values[4]['ori_tun_psf']
 
 
-	console.log(ori_tun_resp, sf_tun_resp, pct_wts, ret_bias)
+	console.log(pref_ori_data, ori_tun_resp, sf_tun_resp, pct_wts, ret_bias)
 
 
 	// Scales
@@ -150,9 +166,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 
 
-	var r = d3.scaleLinear()
-	  .domain([0, 1])
-	  .range([0, 1]);
+
 
 
 
@@ -361,7 +375,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 			.attr('width', canvas_width)
 
 		uniq_oris.forEach(function(ori, i){
-			canvas.append('ellipse')
+			canvas.append('ellipse').classed('ori_leg_ell', true)
 				.attr('cx', function(){
 					return ell_sz;
 				})
@@ -489,15 +503,53 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 	function make_ori_plot(canvas){
 
-		var data = d3.range(0, 2 * Math.PI, .01).map(function(t) {
-		  return [t, Math.sin(2 * t) * Math.cos(2 * t)];
-		});
+		var n_stim_angles = ori_tun_resp.start[0].length;
+		var angle_step = 180/n_stim_angles;
+
+		var angles = d3.range(0, 360+angle_step, angle_step)
+						.map(a => deg_to_rad(a))
+
+		var before_resp = ori_tun_resp.start[v1_cell_num]
+		var after_resp = ori_tun_resp.end[v1_cell_num]
+		
+
+		var before_resp_data = ori_tun_resp.start[v1_cell_num]
+								.map(norm);
+
+		var after_resp_data = ori_tun_resp.end[v1_cell_num]
+								.map(norm);
+
+		function norm(d, i, all){
+			return d / d3.max(all)
+		}
+
+		function actual(d){
+			return d;
+		}
 
 
+		var ori_tun_data = {};
+		ori_tun_data['before'] = angles.map(function(a, i){
+			// mod of n_stim angles to mirror the semi-circular response around the circle
+			return [a, before_resp_data[i%n_stim_angles]]
+		})
+
+		ori_tun_data['after'] = angles.map(function(a, i){
+			// mod of n_stim angles to mirror the semi-circular response around the circle
+			return [a, after_resp_data[i%n_stim_angles]]
+		})
+
+
+		console.log('ORI_DATA', ori_tun_data)
+
+		var r = d3.scaleLinear()
+		  .domain([0, 1.12* d3.max([d3.max(before_resp_data), d3.max(after_resp_data)])])
+		  .range([0, radius])
+		  .nice();
 
 		var line = d3.lineRadial()
 		    .radius(function(d) { return r(d[1]); })
-		    .angle(function(d) { return -d[0] + Math.PI / 2; });
+		    .angle(function(d) { return -(d[0] - (Math.PI / 2)); });
 
 		var svg = canvas
 		    .attr("width", width)
@@ -505,21 +557,43 @@ Promise.all(data_files.map(f=>d3.json(f)))
 		  .append("g")
 		    .attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
 
+	    // Setting up radial ticks/axes
 		var gr = svg.append("g")
 		    .attr("class", "r axis")
 		  .selectAll("g")
-		    .data(r.ticks(5).slice(1))
+		    .data(r.ticks(2).slice(1))
 		  .enter().append("g");
 
+	  	// Bounding circle at edge of plot for context of circle
+	  	var bound_circ = svg.append("g")
+	  			    .attr("class", "r bound")
+	  			    .append('circle')
+	  			    .attr('r', radius)
+	  			    .attr('')
+
+	    // Circles for each radial tick
 		gr.append("circle")
+			.attr('class', 'r axis')
 		    .attr("r", r);
 
-		gr.append("text")
-		    .attr("y", function(d) { return -r(d) - 4; })
-		    .attr("transform", "rotate(15)")
-		    .style("text-anchor", "middle")
-		    .text(function(d) { return d; });
+	    console.log('rad ticks', gr)
 
+	    // Tick labels for each radial tick
+		// gr.filter(function(d, i, gr){
+		// 	return i == (gr.length-1);
+		// })
+		// 	.append("text")
+		//     .attr("y", function(d) { return -r(d) - 4; })
+		//     .attr("transform", "rotate(0)")
+		//     .attr('transform', `translate(${0.2*radius}, 0)`)
+		//     .style("text-anchor", "middle")
+		//     .text(function(d) { 
+		//     	return `${d3.format('.1f')(d3.max(before_resp))} 
+		//     	${d3.format('.1f')(d3.max(after_resp))}`
+		//     	// return d; 
+		//     });
+
+	    // Setting up angle ticks
 		var ga = svg.append("g")
 		    .attr("class", "a axis")
 		  .selectAll("g")
@@ -530,18 +604,83 @@ Promise.all(data_files.map(f=>d3.json(f)))
 		ga.append("line")
 		    .attr("x2", radius);
 
-		ga.append("text")
-		    .attr("x", radius + 6)
-		    .attr("dy", ".35em")
-		    .style("text-anchor", function(d) { return d < 270 && d > 90 ? "end" : null; })
-		    .attr("transform", function(d) { return d < 270 && d > 90 ? "rotate(180 " + (radius + 6) + ",0)" : null; })
-		    .text(function(d) { return d + "°"; });
+		// ga.append("text")
+		//     .attr("x", radius + 6)
+		//     .attr("dy", ".35em")
+		//     .style("text-anchor", function(d) { return d < 270 && d > 90 ? "end" : null; })
+		//     .attr("transform", function(d) { return d < 270 && d > 90 ? "rotate(180 " + (radius + 6) + ",0)" : null; })
+		//     .text(function(d) { return d + "°"; });
+
+
+
+		ga.append('ellipse').classed('ori_plot_ori_tick', true)
+			.attr('cx', radius +2 + input_perc_rad.range()[1])
+			.attr('cy', 0)
+			.attr('rx', input_perc_rad.range()[1]
+				)
+			.attr('ry', 0.5 *input_perc_rad.range()[1])
+			.attr('stroke', function(d){
+				// return ori_pref(d)
+				return '#494949'
+			}
+)
+			.attr('stroke-width', 1)
+			.attr('fill', function(d){
+				var col = d3.hsl(ori_pref(d));
+
+				// col.l = 0.5
+				// col.s = 0.5
+				// return col;
+				return ori_pref(d)
+				// return '#494949'
+
+			})
+	
+		var ori_tun_plot_col = '#af61ff';
+
+	    // Plotting the data
+		svg.append("path")
+		    .datum(ori_tun_data.before)
+		    .attr("class", "ori line before")
+		    .attr("d", line)
+		    .attr('fill', 'none')
+		    .attr('stroke-width', 3)
+		    .attr('stroke', function(){
+
+		    	// return '#0086d5';
+
+		    	// var col = d3.hsl(ori_tun_plot_col);
+		    	// col.s = 0.1;
+		    	// return col
+		    	var col =  d3.hsl(ori_pref(rad_to_deg(pref_ori_data.end[v1_cell_num][0])))
+		    	col.l -= 0.4
+
+		    	return col
+
+		    })
+	    	.attr('stroke-linejoin',"round")
+	    	// .attr('stroke-linecap', 'round')
+	    	.attr('stroke-dasharray', '10 5')
 
 		svg.append("path")
-		    .datum(data)
-		    .attr("class", "line")
-		    .attr("d", line);
+		    .datum(ori_tun_data.after)
+		    .attr("class", "ori line after")
+		    .attr("d", line)
+		    .attr('fill', 'none')
+		    .attr('stroke-width', 8)
+		    .attr('stroke', function(){
+		    	// return '#ffa762'
 
+		    	// var col = d3.hsl(ori_tun_plot_col);
+		    	// col.s = 0.9;
+		    	// col.l = 0.7
+		    	// return col
+
+		    	return ori_pref(rad_to_deg(pref_ori_data.end[v1_cell_num][0]))
+
+			})
+	    	.attr('stroke-linejoin',"round")
+	    	.attr('stroke-linecap', 'round')
 	}
 
 
@@ -859,6 +998,14 @@ function lin_to_sq_coord(N, sz){
 function squ_to_lin_coord(r, c, sz){
 	// linearised by columns
 	return (sz*(c-1)) + r;
+}
+
+function deg_to_rad(degrees) {
+  return degrees * Math.PI / 180;
+};
+
+function rad_to_deg(radians){
+	return radians * 180 / Math.PI
 }
 
 
