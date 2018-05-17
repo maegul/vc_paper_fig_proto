@@ -57,33 +57,38 @@
 
 </head>
 <body>
+	<div style="display: flex; flex-direction: row">
+		<div>
+			<select id='v1_sel'></select>
+		</div>
 
-	<div id='canvas' style="
-	display: flex;
-	flex-direction: row;
-	width: 200vw;
-	justify-content: flex-start;"
-	>
-		<svg id='before_legend'></svg>
-		<svg id='before' class='retina_svg'></svg>
-		<svg id='after' class='retina_svg'></svg>
-		<svg id='after_legend'></svg>
-		<svg id='ori_legend'></svg>
+		<div>
+			<div id='ret_canvas' style="
+			display: flex;
+			flex-direction: row;
+			width: 200vw;
+			justify-content: flex-start;"
+			>
+				<svg id='before_legend'></svg>
+				<svg id='before' class='retina_svg'></svg>
+				<svg id='after' class='retina_svg'></svg>
+				<svg id='after_legend'></svg>
+				<svg id='ori_legend'></svg>
 
+				
+			</div>
 
-		
+			<div id='func_canvas' style="
+			display: flex;
+			flex-direction: row;
+			width: 200vw;
+			justify-content: flex-start;"
+			>
+				<svg id='ori_tun'></svg>
+
+			</div>	
+		</div>
 	</div>
-
-	<div id='canvas' style="
-	display: flex;
-	flex-direction: row;
-	width: 200vw;
-	justify-content: flex-start;"
-	>
-		<svg id='ori_tun'></svg>
-
-	</div>	
-
 
 <script type="text/javascript">
 
@@ -94,7 +99,9 @@ var data_files = [
 	'sf_tun_resp.json', 
 	'./percentage_weights.json',
 	'./pretinal_pref_orientations.json',
-	'./ori_tun_pref_sf.json'
+	'./ori_tun_pref_sf.json',
+	// Uninverted means straight from outstruct (not rotated about 90 degs)
+	'./pretinal_pref_orientations_UNINVERTED.json'
 ]
 
 
@@ -122,19 +129,6 @@ var data_files = [
 
 	var border_lightness = 0.7;
 
-Promise.all(data_files.map(f=>d3.json(f)))
-.then(function(values) {
-
-	var v1_cell_num = 6;
-
-	var ori_tun_resp = values[0].ori_tun,
-	sf_tun_resp = values[1],
-	pct_wts = values[2].perc_wt,
-	ret_bias = _.flatten(values[3].retina_pref_ori),
-	pref_ori_data = values[4]['ori_tun_psf']
-
-
-	console.log(pref_ori_data, ori_tun_resp, sf_tun_resp, pct_wts, ret_bias)
 
 
 	// Scales
@@ -161,32 +155,98 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	  }
 	  // d3.interpolateRainbow
 	)
-	  .domain([0, 180])	
+	  .domain([0, 180])
+
+Promise.all(data_files.map(f=>d3.json(f)))
+.then(function(values) {
 
 
+// Data assignment
+
+	v1_cell_num = 12;
+	// Katie -> 0, 22, 
+	katie_cell_nums = [0, 11];
+
+	ori_tun_resp = values[0].ori_tun
+	sf_tun_resp = values[1]
+	pct_wts = values[2].perc_wt
+
+	// Inverted about 90 degs
+	// ret_bias = _.flatten(values[3].retina_pref_ori)
+	// Not inverted (direct from data)
+	ret_bias = _.flatten(values[5].retina_pref_ori)
+
+	pref_ori_data = values[4]['ori_tun_psf']
 
 
-
-
-
-
-
+	console.log(pref_ori_data, ori_tun_resp, sf_tun_resp, pct_wts, ret_bias)
 
 	// DataVIz
 
 
-	var ret_size = Math.pow(ret_bias.length, 0.5) // presume square
+
+	ret_size = Math.pow(ret_bias.length, 0.5) // presume square
 	console.log('ret size', ret_size);
 
-	var v1_size = pct_wts.length;
+	v1_size = pct_wts.length;
+
+
+
 
 	// Setting up Retina Palette
 
-	var all_ret_palette = retina_data(v1_size);
+	all_ret_palette = retina_data(v1_size);
 	console.log('all ret data', all_ret_palette);
 
-	var ret_palette = all_ret_palette[v1_cell_num]
+
+
+
+	// Selector for V1
+	var v1_selector = d3.select('#v1_sel')
+	v1_selector.selectAll('.v1_sel_num')
+		.data(d3.range(v1_size))
+		.enter().append('option')
+		.attr('value', d=>d)
+		.attr('selected', function(d){
+			if (d == v1_cell_num) {return 'selected'}
+		})
+		.text(function(d){
+			katie_idx = _.findIndex(katie_cell_nums, idx=>idx==d)
+
+			return `V1 Cell ${d} ${(katie_idx>-1) ? `(Kat Cell ${katie_idx+1}?)`: ''}`})
+	v1_selector.on('change', function(){
+		var new_v1_num = this.value
+		v1_cell_num = new_v1_num
+
+		make_DV()
+	})
+
+
+	make_DV()
+
+function make_DV(){
+
+
+	ret_palette = all_ret_palette[v1_cell_num]
 	console.log('ret pallete', ret_palette)
+
+	// Adjust svg size to have whole retina
+	ret_grid_size = ((ret_palette.range_size+1) * ret_sq_size) 
+						+ ret_top_left_margin 
+						+ ret_bot_right_margin
+						+ (border_width.no_connection * 1);
+
+
+	// For Ori Tun plots
+	width = 960
+	  height = 500
+	  radius = Math.min(width, height) / 2 - 30;
+
+
+
+
+	d3.select('#ret_canvas').selectAll('svg').selectAll('*').remove()
+	d3.select('#func_canvas').selectAll('svg').selectAll('*').remove()
 
 	var before_ret = d3.select('#before');
 	var after_ret = d3.select('#after');
@@ -197,20 +257,10 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 	var ori_tun_pol = d3.select('#ori_tun');
 
-
-	// Adjust svg size to have whole retina
-	var ret_grid_size = ((ret_palette.range_size+1) * ret_sq_size) 
-						+ ret_top_left_margin 
-						+ ret_bot_right_margin
-						+ (border_width.no_connection * 1);
-
 	before_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
 	after_ret.attr('width', ret_grid_size).attr('height', ret_grid_size)
 
-// For Ori Tun plots
-	var width = 960,
-	  height = 500,
-	  radius = Math.min(width, height) / 2 - 30;
+
 
 	// Make DataViz
 
@@ -221,7 +271,7 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	make_ori_legend(ori_leg)
 
 	make_ori_plot(ori_tun_pol)
-
+}
 
 // DataViz Functions
 
@@ -576,8 +626,6 @@ Promise.all(data_files.map(f=>d3.json(f)))
 			.attr('class', 'r axis')
 		    .attr("r", r);
 
-	    console.log('rad ticks', gr)
-
 	    // Tick labels for each radial tick
 		// gr.filter(function(d, i, gr){
 		// 	return i == (gr.length-1);
@@ -597,11 +645,12 @@ Promise.all(data_files.map(f=>d3.json(f)))
 		var ga = svg.append("g")
 		    .attr("class", "a axis")
 		  .selectAll("g")
-		    .data(d3.range(0, 360, 30))
+		    .data(d3.range(0, 360, 15))
 		  .enter().append("g")
 		    .attr("transform", function(d) { return "rotate(" + -d + ")"; });
 
-		ga.append("line")
+		ga.filter(function(d){return d%30 == 0})
+			.append("line")
 		    .attr("x2", radius);
 
 		// ga.append("text")
@@ -763,9 +812,22 @@ function ret_range(perc_wts){
 	// Mainly for organising the layout of the retina in the visualisation
 	// Also includes calculation of how to unwrap if the retinal sampling wraps around the edges
 
+
+	// ret_coords - coords for each input
+	// viz_coords - coords of cells to be visualised
+	// ret_idxs - (viz_coords -> ret_idxs) idxs for all retina cells to be visualised (whether providing input or not)
+	// actual_* - when wrapping involved, values without wrapping modifications applied
+
 	// Requres single cell data from perc wts
 
 	// coords for each input
+
+	var input_idxs = perc_wts.map(function(inpt){
+
+		var idx = inpt[2];
+		return idx
+	})
+
 	var ret_coords = perc_wts.map(function(inpt){
 
 		var coords = lin_to_sq_coord(inpt[2], ret_size);
@@ -833,6 +895,7 @@ function ret_range(perc_wts){
 
 
 	return {
+		input_idxs: input_idxs,
 		row_extent: row_extent,
 		col_extent: col_extent,
 		range_size: range_size, 
