@@ -4,6 +4,7 @@ pw = pct_wts
 ori_calc_lay_a_wts
 savejson('perc_wt', pw, 'percentage_weights.json')
 savejson('retina_pref_ori', lay_a_pref_oris, 'pretinal_pref_orientations.json')
+savejson('retina_pref_ori', outstruct.layerconfig.RF.theta, 'pretinal_pref_orientations_UNINVERTED.json')
 
 % load tuning
 [pref_oris, circ_vars, max_resp, pref_idx, ori_tun_psf, ori_tun, sf_tun] = ori_calc_nov_2017(tuning)
