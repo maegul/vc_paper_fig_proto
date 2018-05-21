@@ -60,6 +60,12 @@
 	<div style="display: flex; flex-direction: row">
 		<div>
 			<select id='v1_sel'></select>
+
+			<div>
+				<input id='sf_idx_sel_start' type="range" name="SF Index Start" min=0 max=14 step=1>
+				<input id='sf_idx_sel_end' type="range" name="SF Index End" min=0 max=14 step=1>
+				<button id='sf_idx_reset'>Reset to Pref SF</button>
+			</div>	
 		</div>
 
 		<div>
@@ -101,7 +107,9 @@ var data_files = [
 	'./pretinal_pref_orientations.json',
 	'./ori_tun_pref_sf.json',
 	// Uninverted means straight from outstruct (not rotated about 90 degs)
-	'./pretinal_pref_orientations_UNINVERTED.json'
+	'./pretinal_pref_orientations_UNINVERTED.json',
+	'ori_sf_resp.json',
+	'preferred_idx.json'
 ]
 
 
@@ -165,25 +173,37 @@ Promise.all(data_files.map(f=>d3.json(f)))
 
 	v1_cell_num = 12;
 	// Katie -> 0, 22, 
-	katie_cell_nums = [0, 11];
+	katie_cell_nums = [0, 11, 20];
 
 	ori_tun_resp = values[0].ori_tun
 	sf_tun_resp = values[1]
 	pct_wts = values[2].perc_wt
 
 	// Inverted about 90 degs
-	// ret_bias = _.flatten(values[3].retina_pref_ori)
+	ret_bias = _.flatten(values[3].retina_pref_ori)
+
 	// Not inverted (direct from data)
-	ret_bias = _.flatten(values[5].retina_pref_ori)
+	// ret_bias = _.flatten(values[5].retina_pref_ori)
 
-	pref_ori_data = values[4]['ori_tun_psf']
+	pref_ori_data = values[4]['ori_tun_psf'],
+
+	ori_sf_resp = values[6]['ori_sf_resp'],
+
+	pref_idx = values[7]['pref_idx']
 
 
-	console.log(pref_ori_data, ori_tun_resp, sf_tun_resp, pct_wts, ret_bias)
+	console.log(pref_ori_data, ori_tun_resp, sf_tun_resp, pct_wts, ret_bias, ori_sf_resp, pref_idx)
 
 	// DataVIz
 
+	// State of ori tun plot - which sf idx to take
+	ori_plot_sf = 'pref'
 
+
+	ori_plot_sf_idx = {
+		start: get_pref_idx(v1_cell_num, 'sf', 'start'), 
+		end: get_pref_idx(v1_cell_num, 'sf', 'end')
+	};
 
 	ret_size = Math.pow(ret_bias.length, 0.5) // presume square
 	console.log('ret size', ret_size);
@@ -199,6 +219,9 @@ Promise.all(data_files.map(f=>d3.json(f)))
 	console.log('all ret data', all_ret_palette);
 
 
+	// 
+	// Selectors
+	// 
 
 
 	// Selector for V1
@@ -214,11 +237,91 @@ Promise.all(data_files.map(f=>d3.json(f)))
 			katie_idx = _.findIndex(katie_cell_nums, idx=>idx==d)
 
 			return `V1 Cell ${d} ${(katie_idx>-1) ? `(Kat Cell ${katie_idx+1}?)`: ''}`})
+
 	v1_selector.on('change', function(){
 		var new_v1_num = this.value
 		v1_cell_num = new_v1_num
 
+		reset_sf_idx()
+
 		make_DV()
+	})
+
+
+	// SF Idx selectors
+	var sf_idx_selector_start = d3.select('#sf_idx_sel_start')
+	var sf_idx_selector_end = d3.select('#sf_idx_sel_end')
+	var sf_idx_reset = d3.select('#sf_idx_reset')
+
+
+	function reset_sf_idx(start_idx = 'end'){
+
+		if (start_idx == 'end') {
+
+			ori_plot_sf = 'pref'
+
+			sf_idx_selector_end.node().value 
+			= sf_idx_selector_start.node().value
+			= ori_plot_sf_idx.start 
+			= ori_plot_sf_idx.end 
+
+			= get_pref_idx(v1_cell_num, 'sf', 'end')
+		}
+		else if (start_idx == 'start'){
+			ori_plot_sf = 'pref'
+
+			sf_idx_selector_end.node().value 
+			= ori_plot_sf_idx.end 
+			= get_pref_idx(v1_cell_num, 'sf', 'end')
+
+			sf_idx_selector_start.node().value
+			= ori_plot_sf_idx.start 
+			= get_pref_idx(v1_cell_num, 'sf', 'start')
+		}
+
+
+	}
+
+	sf_idx_reset.on('click', function(){
+		// ori_plot_sf = 'pref'
+
+		// sf_idx_selector_end.node().value 
+		// = sf_idx_selector_start.node().value
+		// = ori_plot_sf_idx.start 
+		// = ori_plot_sf_idx.end 
+		// = get_pref_idx(v1_cell_num, 'sf', 'end')
+
+		reset_sf_idx()
+
+
+		var plot = d3.select('#ori_tun')
+		plot.selectAll('*').remove()
+
+		make_ori_plot(plot)
+
+	})
+
+	sf_idx_selector_start.on('input', function(){
+		var val = this.value
+
+		ori_plot_sf = 'custom'
+		ori_plot_sf_idx.start = val
+
+		var plot = d3.select('#ori_tun')
+		plot.selectAll('*').remove()
+
+		make_ori_plot(plot, sf_idx = ori_plot_sf_idx)
+	})
+	sf_idx_selector_end.on('input', function(){
+		var val = this.value
+
+		ori_plot_sf = 'custom'
+		ori_plot_sf_idx.end = val
+
+		var plot = d3.select('#ori_tun')
+		plot.selectAll('*').remove()
+
+		make_ori_plot(plot, sf_idx = ori_plot_sf_idx)
 	})
 
 
@@ -270,7 +373,8 @@ function make_DV(){
 	make_wt_legend(stage='after', after_leg)
 	make_ori_legend(ori_leg)
 
-	make_ori_plot(ori_tun_pol)
+
+	make_ori_plot(ori_tun_pol, sf_idx = ori_plot_sf_idx)
 }
 
 // DataViz Functions
@@ -401,12 +505,35 @@ function make_DV(){
 		})
 	}
 
-	function make_ori_legend(canvas){
 
-		var uniq_oris = _.chain(ret_bias)
+	function gen_ori_range(min=0, max=180, incl_end=false){
+		var min_diff_ori = _.chain(ret_bias)
 							.uniq()
 							.sortBy()
+							.map(function(o, i, oris){              
+				                return (i < oris.length) ? 
+				                  oris[i+1] - o : undefined
+							})
+							.min()
 							.value()
+
+	    var max = incl_end ? max+min_diff_ori : max;
+
+	    var range = d3.range(min, max, min_diff_ori)
+
+		return range;
+	}
+
+	function make_ori_legend(canvas){
+
+		// var uniq_oris = _.chain(ret_bias)
+		// 					.uniq()
+		// 					.sortBy()
+		// 					.value()
+
+		var uniq_oris = gen_ori_range();
+
+		console.log('uniq oris', uniq_oris)
 
 		var n_steps = uniq_oris.length;
 
@@ -551,7 +678,26 @@ function make_DV(){
 	}
 
 
-	function make_ori_plot(canvas){
+
+	function get_pref_idx(cell_num, stim, stage){
+		var stim_idx = (stim=='sf') ? 1 : 0 // ori or sf preferred indx
+
+		var pref_stim_idx = pref_idx[stage][cell_num][stim_idx] - 1 // Matlab to JS indexing
+
+		return pref_stim_idx
+	}
+
+
+	function get_ori_resp(cell_num, sf_idx, stage){
+		// get ori resp for specific cell, sf_idx and stage
+
+		var resp = ori_sf_resp[stage][cell_num]
+					.map(ori_resps => ori_resps[sf_idx])
+
+		return resp
+	}
+
+	function make_ori_plot(canvas, sf_idx = 'pref'){
 
 		var n_stim_angles = ori_tun_resp.start[0].length;
 		var angle_step = 180/n_stim_angles;
@@ -559,15 +705,45 @@ function make_DV(){
 		var angles = d3.range(0, 360+angle_step, angle_step)
 						.map(a => deg_to_rad(a))
 
-		var before_resp = ori_tun_resp.start[v1_cell_num]
-		var after_resp = ori_tun_resp.end[v1_cell_num]
+		// var before_resp = ori_tun_resp.start[v1_cell_num]
+		// var after_resp = ori_tun_resp.end[v1_cell_num]
+
+		var pref_sf_idx = {
+			end: get_pref_idx(v1_cell_num, 'sf', 'end'),
+			start: get_pref_idx(v1_cell_num, 'sf', 'start')
+		}
 		
+		if (ori_plot_sf == 'pref'){
 
-		var before_resp_data = ori_tun_resp.start[v1_cell_num]
-								.map(norm);
 
-		var after_resp_data = ori_tun_resp.end[v1_cell_num]
-								.map(norm);
+			var before_resp_data = get_ori_resp(v1_cell_num, 
+												pref_sf_idx.end, 
+												'start')
+									.map(norm)
+
+			var after_resp_data = get_ori_resp(v1_cell_num, 
+												pref_sf_idx.end, 
+												'end')
+									.map(norm)
+		}
+		else {
+			var before_resp_data = get_ori_resp(v1_cell_num, 
+												sf_idx.start ? sf_idx.start : pref_sf_idx.end, 
+												'start')
+									.map(norm)
+
+			var after_resp_data = get_ori_resp(v1_cell_num, 
+												sf_idx.end ? sf_idx.end : pref_sf_idx.end, 
+												'end')
+									.map(norm)
+
+		}
+
+		// var before_resp_data = ori_tun_resp.start[v1_cell_num]
+		// 						.map(norm);
+
+		// var after_resp_data = ori_tun_resp.end[v1_cell_num]
+		// 						.map(norm);
 
 		function norm(d, i, all){
 			return d / d3.max(all)
@@ -645,11 +821,14 @@ function make_DV(){
 		var ga = svg.append("g")
 		    .attr("class", "a axis")
 		  .selectAll("g")
-		    .data(d3.range(0, 360, 15))
+		    // .data(d3.range(0, 360, 15))
+		    // .data(d3.range(0, 360+angle_step, angle_step))
+		    .data(gen_ori_range(0, 360)) // Based on steps on ret ori biases
 		  .enter().append("g")
 		    .attr("transform", function(d) { return "rotate(" + -d + ")"; });
 
-		ga.filter(function(d){return d%30 == 0})
+		ga
+		// .filter(function(d){return d%30 == 0})
 			.append("line")
 		    .attr("x2", radius);
 
